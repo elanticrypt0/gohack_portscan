@@ -2,67 +2,78 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
-	"sort"
+	"sync"
 )
 
 func main() {
+	// max of ports to scan
+	topPorts := uint(500)
 
-	ports_2_scan := 1024
+	// waitGroup
+	var wg sync.WaitGroup
 
-	// this make 2 channels
-	//this send the data
-	ports := make(chan int, 100)
-	// this is the result
-	results := make(chan int)
+	ConsolePrintTitle()
 
-	var openports []int
-
-	for i := 0; i < cap(ports); i++ {
-		// this makes channels
-		go worker(ports, results)
-	}
-
-	// this is anom func to pass i value to the ports channel.
-	go func() {
-		for i := 1; i < ports_2_scan; i++ {
-			// wg.Add(1)
-			ports <- i
-		}
-	}()
-
-	// this func gets the results.
-	for i := 1; i < ports_2_scan; i++ {
-		port := <-results
-		if port != 0 {
-			openports = append(openports, port)
-		}
-	}
-	close(ports)
-	close(results)
-
-	// once that the results are gattered sort the ports
-	sort.Ints(openports)
-
-	// print the results
-	for _, port := range openports {
-		fmt.Printf("%d open\n", port)
-	}
+	// scan_v1(topPorts)
+	// scan_v2(topPorts, &wg)
+	scan_v3(int(topPorts), &wg)
 
 }
 
-// this checks if the port on the current pc is opened
-func worker(ports, result chan int) {
-	for p := range ports {
-
-		address := fmt.Sprintf("0.0.0.0:%d", p)
+func scan_v1(topPorts uint) {
+	for i := uint(1); i <= topPorts; i++ {
+		address := fmt.Sprintf("scanme.nmap.org:%d", i)
 		conn, err := net.Dial("tcp", address)
 		if err != nil {
-			result <- 0
-			continue
+			log.Println(err)
 		} else {
 			conn.Close()
-			result <- p
+			fmt.Printf("Port %d - Open", i)
 		}
+
+	}
+}
+
+func scan_v2(topPorts uint, wg *sync.WaitGroup) {
+	for i := uint(1); i <= topPorts; i++ {
+		wg.Add(1)
+		go func(j uint) {
+			defer wg.Done()
+			address := fmt.Sprintf("scanme.nmap.org:%d", j)
+			conn, err := net.Dial("tcp", address)
+			if err != nil {
+				log.Println(err)
+			} else {
+				conn.Close()
+				fmt.Printf("Port %d - Open", j)
+			}
+		}(i)
+	}
+	wg.Wait()
+}
+
+func scan_v3(topPorts int, wg *sync.WaitGroup) {
+	// channel for the v3
+	ports := make(chan int, 100)
+
+	// This make a buffer to the channel of 100
+	for i := 1; i <= cap(ports); i++ {
+		go v3_worker(ports, wg)
+	}
+
+	for i := 1; i <= topPorts; i++ {
+		wg.Add(1)
+		ports <- i
+	}
+	wg.Wait()
+	close(ports)
+}
+
+func v3_worker(ports chan int, wg *sync.WaitGroup) {
+	for p := range ports {
+		fmt.Println("Port ", p)
+		wg.Done()
 	}
 }
